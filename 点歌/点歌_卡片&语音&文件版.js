@@ -2,18 +2,18 @@
 // @name         点歌
 // @author       JustAnotherID, Fripine(modified)，炽热(modified)
 // @version      1.0.3
-// @description  基于JustAnotherID的音卡插件修改\n提供指令「.点歌 <歌名> [语音/卡片](可选)」「.qq音乐 <歌名>[语音/卡片](可选)」「.网易云 <歌名>[语音/卡片](可选)」,api 均为炽热提供.
-// @timestamp    2024-09-06 10:00:00
+// @description  基于JustAnotherID的音卡插件修改\n提供指令「.点歌 <歌名> [语音/卡片/文件](可选)」「.qq音乐 <歌名>[语音/卡片/文件](可选)」「.网易云 <歌名>[语音/卡片/文件](可选)」,api 均为炽热提供.默认点歌更新为网易云音乐。
+// @timestamp    2025-02-25 23:00:00
 // @license      Apache-2
-// @homepageURL  https://github.com/JustAnotherID/just-another-seal-mod-repo/tree/master/js/music-with-card
+// @homepageURL  https://github.com/yichere/seal-js/tree/master/%E7%82%B9%E6%AD%8C
+// @updateUrl    http://blog.lovesealdice.online/seal-js/%E7%82%B9%E6%AD%8C/%E7%82%B9%E6%AD%8C_%E5%8D%A1%E7%89%87&%E8%AF%AD%E9%9F%B3&%E6%96%87%E4%BB%B6%E7%89%88.js
 // ==/UserScript==
+
 if (!seal.ext.find("music-with-card")) {
-  const ext = seal.ext.new("music-with-card", "JustAnotherID, Fripine(modified)", "1.0.2");
+  const ext = seal.ext.new("music-with-card", "JustAnotherID, Fripine(modified)，炽热(modified)", "1.0.2");
 
   seal.ext.register(ext);
-  seal.ext.registerBoolConfig(ext, "Seletced Mode", true, "是否选中第一首歌，若为true则发送的卡片携带音源，若为false，则反之");
-  seal.ext.registerBoolConfig(ext, "Napcat && LLOB", false, "OneBot端是否为Napcat或LLOB？ 若用的lagrange请设为false。若使用Napcat与LLOB，则不支持网易云和酷狗点歌");
-  seal.ext.registerBoolConfig(ext, "card", true, "若使用卡片格式则为 true，使用语音格式则使用 false");
+  seal.ext.registerOptionConfig(ext, "Seletced Mode Plus", "卡片",["卡片", "语音", "文件"], "默认发送格式，支持卡片/语音/文件");
   seal.ext.registerStringConfig(ext, "baseurl", "http://localhost:3666/", "本地开放的 http 客户端")
   const cmdQQMusic = seal.ext.newCmdItemInfo();
   cmdQQMusic.name = "点歌";
@@ -66,8 +66,7 @@ if (!seal.ext.find("music-with-card")) {
         let musicName = msg.message.replace(re, "").replace(/\[CQ:\S+\]/, "").replace(/^\S/, "").trim();
         console.log(musicName)
         // seletced如果为false,则无法获得音源src，卡片无法播放音频
-        let seletced = seal.ext.getBoolConfig(ext, "Seletced Mode");
-        let addition = seletced ? '&n=1' : '';
+        let addition = '';
         let api = '';
         switch (command) {
           case '点歌':
@@ -290,13 +289,17 @@ if (!seal.ext.find("music-with-card")) {
             handleFile()
             return;
           }
-          if (seal.ext.getBoolConfig(ext, "card")) {
-            handleCard()
-            return
-          } else {
-            // 为语音格式
-            handleVoice()
-            return;
+
+          switch(seal.ext.getOptionConfig(ext, "Seletced Mode Plus")){
+            case "卡片":
+              handleCard()
+              break;
+            case "语音":
+              handleVoice()
+              break;
+            case "文件":
+              handleFile()
+              break;
           }
 
         }).catch((error) => {
