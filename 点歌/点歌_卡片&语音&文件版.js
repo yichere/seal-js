@@ -2,7 +2,7 @@
 // @name         点歌
 // @author       JustAnotherID, Fripine(modified)，炽热(modified)
 // @version      1.0.3
-// @description  基于JustAnotherID的音卡插件修改\n提供指令「.点歌 <歌名> [语音/卡片/文件](可选)」「.qq音乐 <歌名>[语音/卡片/文件](可选)」「.网易云 <歌名>[语音/卡片/文件](可选)」,api 均为炽热提供.默认点歌更新为网易云音乐。
+// @description  基于JustAnotherID的音卡插件修改\n提供指令「.点歌 <歌名> [语音/卡片/文件](可选)」「.qq音乐 <歌名>[语音/卡片/文件](可选)」「.网易云 <歌名>[语音/卡片/文件](可选)」,api 均为炽热提供\n默认点歌更新为网易云音乐,修复卡片格式发送失败问题（不支持 qq 点歌）。
 // @timestamp    2025-02-25 23:00:00
 // @license      Apache-2
 // @homepageURL  https://github.com/yichere/seal-js/tree/master/%E7%82%B9%E6%AD%8C
@@ -10,7 +10,7 @@
 // ==/UserScript==
 
 if (!seal.ext.find("music-with-card")) {
-  const ext = seal.ext.new("music-with-card", "JustAnotherID, Fripine(modified)，炽热(modified)", "1.0.2");
+  const ext = seal.ext.new("music-with-card", "JustAnotherID, Fripine(modified)，炽热(modified)", "1.0.3");
 
   seal.ext.register(ext);
   seal.ext.registerOptionConfig(ext, "Seletced Mode Plus", "卡片",["卡片", "语音", "文件"], "默认发送格式，支持卡片/语音/文件");
@@ -100,15 +100,32 @@ if (!seal.ext.find("music-with-card")) {
           function handleCard() {
 
             if (command == '网易云' || command == '点歌') {
-
-              let id = JSON.parse(data).result.songs[0].id
-
-              if (!id) {
+              let m = JSON.parse(data)
+              if (!m.result.songs[0]) {
                 seal.replyToSender(ctx, msg, "没找到这首歌...");
                 return;
               }
-
-              seal.replyToSender(ctx, msg, `[CQ:music,type=qq,id=${id}]`)
+              let id = m.result.songs[0].id
+              let name = m.result.songs[0].name
+              let art = m.result.songs[0].artists[0].name
+              fetch(`http://net.ease.music.lovesealdice.online/song/detail?ids=${id}`).then(res => res.json()).then(data => {
+                let img = data.songs[0].al.picUrl
+                let re = `[CQ:image,file=${img}]\n歌曲名：${name}\n歌手：${art}`
+                fetch(`http://net.ease.music.lovesealdice.online/song/download/url?id=${id}`,
+                  {
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                      'Cookie': "_gid=GA1.2.2048499931.1737983161; _ga_MD3K4WETFE=GS1.1.1737983160.8.1.1737983827.0.0.0; _ga=GA1.1.1845263601.1736600307; MUSIC_U=00C10F470166570C36209E7E3E3649FEE210D3DB5B3C39C25214CFE5678DCC5773C63978903CEBA7BF4292B97ADADB566D96A055DCFDC860847761109F8986373FEC32BE2AFBF3DCFF015894EC61602562BF9D16AD12D76CED169C5052A470677A8D59F7B7D16D9FDE2A4ED237DE5C6956C0ED5F7A9EA151C3FA7367B0C6269FF7A74E6626B4D7F920D524718347659394CBB0DAE362991418070195FEFC730BCCE3CF4B03F24274075679FB4BFC884D099BD3CF679E4F1C9D5CBC2959CD29B0741BD52BCA155480116CE96393663B1A51D88AFDB57680F030CF93A305064A797B99874CA826D6760F616CB756B680591167AEE9AF31C4A187E61A19D7C1175961D4FE64CFD878F0BCEBB322A23E396DC5E8175A50D5E07B9788E4EBE8F8257FF139DB4FD03A89676F5C3DF1B70C101F4568C0A3657C24185218F975368ADB2DEF860760C59E9AFCCB214A4B51029E29ED; __csrf=85f3aa8cedc01f6d50b6b924efbf6f95; NMTID=00OG17oToz2Ne1rikTtgKPqOLaYuP0AAAGUqBEN0A"
+                    }
+                  }
+                ).then(res => res.json()).then(async (res) => {
+                  await res
+                  re = `[CQ:music,type=163,url=${res.data.url},audio=${res.data.url},title=${name},content=${art},image=${img}]`
+                  seal.replyToSender(ctx, msg, re)
+                  return;
+                })
+                }
+              )
 
               return
             } else {
