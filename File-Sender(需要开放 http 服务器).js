@@ -14,7 +14,7 @@ if (!ext) {
     ext = seal.ext["new"]('File-sender', '以炽热挥剑', '1.0.0');
     seal.ext.register(ext);
     seal.ext.registerTemplateConfig(ext, "fileList", ["coc空白卡"], "存储文件的列表")
-    seal.ext.registerStringConfig(ext, "url", "http://127.0.0.1:3666/", "开放的 http 服务器地址")
+    seal.ext.registerStringConfig(ext, "url", "{}", "map[endpoint]url")
     seal.ext.registerStringConfig(ext, "help", "发送\"。发送文件 <文件名>\" 让骰娘发送本地文件")
     seal.ext.registerBoolConfig(ext, "isCheck", true, "是否检查用户发送的文件在列表中")
     seal.ext.registerStringConfig(ext, "base", "C://Users/Administrator/Desktop/文件/", "文件存放的根目录")
@@ -36,42 +36,16 @@ cmdFile.solve = (ctx, msg, cmd) => {
     } else {
 
         function sendFile(filepath) {
-            if (ctx.isPrivate){
-                url = encodeURI(url + `send_private_msg`)
-                fetch(url,{
-                    method:"POST",
-                    body:JSON.stringify({
-                        "user_id":ctx.player.userId.replace(/QQ:/, ""),
-                        "message":[
-                            {
-                                "type":"file",
-                                "data":{
-                                    "file":`file://${seal.ext.getStringConfig(ext, "base")}/${filepath}`
-                                }
-                            }
-                        ]
-                    })
-                }).then(res => res.json()).then(res =>{
-                    if (res.status != 'ok') {
-                        seal.replyToSender(ctx, msg, "上传失败！请检查群聊是否允许上传文件，填写 url 是否正确。")
-                    }
-                }).catch(err => {
-                    seal.replyToSender(ctx,msg,err)
-                })
-            }else{
-                url = encodeURI(url + `upload_group_file?group_id=${ctx.group.groupId.replace(/QQ-Group:/, "")}&file=${seal.ext.getStringConfig(ext, "base")}/${filepath}&name=${!filepath.match(/\/[\s\S]+/) ? filepath : filepath.match(/\/[\s\S]+/)[0].replace("/", "")}`)
-                fetch(url).then(res => res.json()).then(res => {
-                    if (res.status != 'ok') {
-                        seal.replyToSender(ctx, msg, "上传失败！请检查群聊是否允许上传文件，填写 url 是否正确。")
-                    }
-                }).catch(err => {
-                    seal.replyToSender(ctx,msg,err)
-                })
-            }
+            url = encodeURI(url + `upload_group_file?group_id=${ctx.group.groupId.replace(/QQ-Group:/, "")}&file=${seal.ext.getStringConfig(ext, "base")}/${filepath}&name=${!filepath.match(/\/[\s\S]+/) ? filepath : filepath.match(/\/[\s\S]+/)[0].replace("/", "")}`)
+            fetch(url).then(res => res.json()).then(res => {
+                if (res.status != 'ok') {
+                    seal.replyToSender(ctx, msg, "上传失败！请检查群聊是否允许上传文件，填写 url 是否正确。")
+                }
+            })
         }
 
         let fileList = seal.ext.getTemplateConfig(ext, "fileList");
-        let url = seal.ext.getStringConfig(ext, "url");
+        let url = JSON.parse(seal.ext.getStringConfig(ext, "url"))[ctx.endPoint.userId];
         console.log(JSON.stringify(fileList))
         if (seal.ext.getBoolConfig(ext, "isCheck")) {
             if (seal.ext.getBoolConfig(ext, "isAiSearch")) {
