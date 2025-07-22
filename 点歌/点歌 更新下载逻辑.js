@@ -40,7 +40,6 @@ if (!seal.ext.find("music-with-card")) {
           return seal.ext.newCmdExecuteResult(true);
         }
         let i = ""
-        let cookie = seal.ext.getStringConfig(ext, "cookie")
         if (/卡片/.test(msg.message)) {
           i = "卡片"
           msg.message = msg.message.replace("卡片", "")

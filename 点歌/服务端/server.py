@@ -7,6 +7,7 @@ from typing import Any, Dict
 from urllib.parse import urlparse
 import fastapi
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 import requests
 from tqdm import tqdm
 
@@ -49,11 +50,20 @@ def load_config_with_template(
 CONFIG_TEMPLATE = {
         "server_url": "http://net.ease.music.lovesealdice.online/",
         "cookie": "",
-        "local_server":"http://127.0.0.1:8000/"
+        "local_server":"http://127.0.0.1:8000/",
+        "ai_api_url": "https://api.deepseek.com/v1/chat/completions",
+        "ai_api_key": "",
+        "ai_model": "deepseek-chat"
     }
     
 config_file = "config.json"
 config = load_config_with_template(config_file, CONFIG_TEMPLATE)
+
+class RecommendRequest(BaseModel):
+    type: str
+    time: int
+    singer: str | None = None
+    tag: str | None = None
 
 class Sql:
     def __init__(self, db_name):
@@ -161,7 +171,61 @@ headers = {
     'Cookie':config["cookie"]
 }
 
+def get_recommend_result(request:object):
+    """根据请求获取推荐结果
 
+    Args:
+        request (object): 请求体
+    """
+    prompt = f"""
+    你是一个工具,负责根据需求返回一个随机歌曲，注意：如果是歌手请求必须返回原唱/调教结果。尽可能体现随机性！
+    根据时间戳增加随机性: {(request.time)}，
+    请根据以下内容为要求：
+    """
+    if request.type == "singer":
+        prompt += f"歌手/调教: {request.singer}\n"
+    elif request.type == "tag":
+        prompt += f"标签: {request.tag}\n"
+    elif request.type == "whole":
+        prompt += f"歌手/调教: {request.singer}\n标签: {request.tag}\n"
+    prompt += "请返回一首歌的歌名，格式按照 JSON 返回，返回的键为 song。"
+    print(prompt)
+    try:
+        response = requests.post(
+            config["ai_api_url"],
+            headers={
+                "Authorization": f"Bearer {config['ai_api_key']}",  
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": config["ai_model"],
+                "messages": [
+                    {"role": "system", "content": "你是一个音乐推荐助手"},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 100,
+                "temperature": 1.5
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+        data = response.json()
+        print(data)
+        if 'choices' in data and len(data['choices']) > 0:
+            song_name = data['choices'][0]['message']['content'].strip()
+            if song_name:
+                return {"song": song_name}
+            else:
+                raise ValueError("AI未返回有效的歌曲名称")
+        else:
+            raise ValueError("AI响应格式不正确，未包含歌曲名称")
+    except requests.exceptions.RequestException as e:
+        raise fastapi.HTTPException(
+            status_code=502,
+            detail=f"AI请求失败: {str(e)}"
+        )
+
+    
 def download_file(url: str, file_path: str):
     """
     使用tqdm显示下载进度
@@ -210,6 +274,62 @@ def get_song_info(songid:int):
         object: 音乐的详情
     """
     return requests.get(f"{config['server_url']}/song/detail?ids={songid}").json()
+
+def get_search_result(song_name: str):
+    """_summary_
+    获取音乐的搜索结果
+
+    Args:
+        song_name (str): 歌曲名
+    Returns:
+        object: 音乐的搜索结果
+    """
+    return requests.get(f"{config['server_url']}/search?keywords={song_name}").json()["result"]["songs"][0]["id"]
+
+def test(songid: int =1357375695):
+    r = get_song_info(songid)
+    singer = r["songs"][0]["ar"][0]["name"]
+    song_name = r["songs"][0]["name"]
+    img_url = r["songs"][0]["al"]["picUrl"]
+    album_id = r["songs"][0]["al"]["id"]
+    sql = Sql("music_data.db")
+    sql.create_tables()
+    if sql.check_value_exists("song","songid",songid):
+        return  {
+            "song_name":song_name,
+            "img_url":img_url,
+            "singer":singer,
+            "file":f"{config['local_server']}{singer}/{song_name}feat.{singer}.flac",
+            "status":200
+        }
+    else:
+            download_success = False
+            try:
+                file_path = while_not_exist_handler(songid, singer, song_name)
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    download_success = True
+            except Exception as download_error:
+                download_success = False
+                print(f"下载失败: {str(download_error)}")
+            
+            if download_success:
+                sql.add_song(songid, img_url, singer, song_name, album_id)
+                return {
+                    "song_name": song_name,
+                    "img_url": img_url,
+                    "singer": singer,
+                    "file": f"{config['local_server']}{singer}/{song_name}feat.{singer}.flac",
+                    "status":200
+                }
+            else:
+                return {
+                    "song_name": song_name,
+                    "img_url": img_url,
+                    "singer": singer,
+                    "file": None,
+                    "message": "歌曲下载失败，请稍后再试",
+                    "status":400
+                }
 
 def while_not_exist_handler(songid: int, singer: str, song_name: str):
     """
@@ -271,51 +391,15 @@ def while_not_exist_handler(songid: int, singer: str, song_name: str):
             detail=f"下载处理失败: {str(e)}"
         )
 
+@app.post("/recommend")
+def recommend(request: RecommendRequest):
+    return test(get_search_result(json.loads(get_recommend_result(request)["song"].replace("```json","").replace("```","").replace("\n",""))["song"]))
 
 @app.get("/test")
-def test(songid: int =1357375695):
-    r = get_song_info(songid)
-    singer = r["songs"][0]["ar"][0]["name"]
-    song_name = r["songs"][0]["name"]
-    img_url = r["songs"][0]["al"]["picUrl"]
-    album_id = r["songs"][0]["al"]["id"]
-    sql = Sql("music_data.db")
-    sql.create_tables()
-    if sql.check_value_exists("song","songid",songid):
-        return  {
-            "song_name":song_name,
-            "img_url":img_url,
-            "singer":singer,
-            "file":f"{config['local_server']}{singer}/{song_name}feat.{singer}.flac",
-            "status":200
-        }
-    else:
-            download_success = False
-            try:
-                file_path = while_not_exist_handler(songid, singer, song_name)
-                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                    download_success = True
-            except Exception as download_error:
-                download_success = False
-                print(f"下载失败: {str(download_error)}")
-            
-            if download_success:
-                sql.add_song(songid, img_url, singer, song_name, album_id)
-                return {
-                    "song_name": song_name,
-                    "img_url": img_url,
-                    "singer": singer,
-                    "file": f"{config['local_server']}{singer}/{song_name}feat.{singer}.flac",
-                    "status":200
-                }
-            else:
-                return {
-                    "song_name": song_name,
-                    "img_url": img_url,
-                    "singer": singer,
-                    "file": None,
-                    "message": "歌曲下载失败，请稍后再试",
-                    "status":400
-                }
+def test_endpoint(songid: int = 1357375695):
+    """
+    测试端点，返回歌曲信息
+    """
+    return test(songid)
 
 app.mount("/", StaticFiles(directory="music", html=True), name="static")
